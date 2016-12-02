@@ -1,5 +1,5 @@
 // complementary_filter
-* Grant Marcy, A11182203 - 2016
+/* Grant Marcy, A11182203 - 2016
 * Code to Print Acceleration Data and Gyro Data to screen, and calculate Euler
 * angle
 *******************************************************************************/
@@ -11,6 +11,11 @@
 float euler_gyro=0;
 float rad_angle;
 float ang_deg;
+#define sample_rate 10;
+float time_constant = 1;
+int show_accel=0;
+int show_gyro=1;
+
 //struct to hold new data
 imu_data_t data;
 
@@ -25,20 +30,25 @@ int print_data();
 int print_data(){
         printf("\r");
         printf(" ");
-                printf(" %5.2f %5.2f %5.2f\n |",        data.accel[0],
-                                                                                data.accel[1],
-                                                                                data.accel[2]);
-                printf(" %5.1f %5.1f %5.1f\n |",        data.gyro[0],
-                                                                                data.gyro[1],
-                                                                                data.gyro[2]);
+              //  printf(" %5.2f %5.2f %5.2f\n |",        data.accel[0],
+               //                                                                 data.accel[1],
+                 //                                                               data.accel[2]);
+               // printf(" %5.1f %5.1f %5.1f\n |",        data.gyro[0],
+               //                                                                 data.gyro[1],
+               //                                                                 data.gyro[2]);
 
 
-euler_gyro=euler_gyro+(1/sample_rate)*data.gyro[0];
-                printf(" %5.1f \n |", euler_gyro);
+euler_gyro += data.gyro[0]*DEG_TO_RAD/sample_rate;
+                
 
-                rad_angle=atan2(data.accel[2], data.accel[1]);
-                ang_deg=rad_angle*180/pi;
-                printf(" %5.1f \n|", rad_angle);
+                rad_angle=atan2(-data.accel[2], data.accel[1]);
+                ang_deg=rad_angle*180/PI;
+                
+
+
+                
+
+                fflush(stdout);
         return 0;
 }
 
@@ -51,25 +61,54 @@ The print_data function is set with set_imu_interrupt
 
 *******************************************************************************/
 int main(){
-        int  sample_rate;
+        //int  sample_rate=10;
         // start with default config and modify based on options
-        imu_config_t conf = get_default_imu_config();
+		d_filter_t low_pass, high_pass;
+		const float dt=1/(float)sample_rate;
+		float lp, hp = 0;
+		int counter = 0;
 
-                        sample_rate =10;
-                        show_accel = 1;
-                        show_gyro = 1;
+		low_pass = create_first_order_lowpass(dt, time_constant);
+		high_pass = create_first_order_highpass(dt, time_constant);
+
+		reset_filter(&low_pass);
+		reset_filter(&high_pass);
+
+
+		//print header
+		printf("Accelerometer |");
+		printf("Gyro |");
+		printf("lowpass |");
+		printf("highpass |");
+		printf("hi+lo |");
+		printf("\n");
+
+        imu_config_t conf = get_default_imu_config();
+                        conf.dmp_sample_rate=sample_rate;
+                        
         // Initialize Cape
-        initialize_cape()
+        initialize_cape();
         // Initialize IMU for DMP Interrupt Function
-        (initialize_imu_dmp(&data, conf);
+        initialize_imu_dmp(&data, conf);
 
         // call set_imu_interrupt_func to sample system values
         //and print the values
-        print_header();
+        //print_header();
         set_imu_interrupt_func(&print_data);
 //sleep at end of loop
         while (get_state()!=EXITING) {
-                usleep(10000);
+        		lp=march_filter(&low_pass, rad_angle);
+        		hp=march_filter(&high_pass, euler_gyro);
+
+
+        		printf(" %5.1f |", euler_gyro);
+        		printf(" %5.1f |", rad_angle);
+        		printf(" %5.1f |", lp);
+                printf(" %5.1f |", hp);
+                printf("%5.1f \n", lp+hp);
+                counter += 1;
+
+            	usleep(1000000);
         }
 
         // For Powering off
