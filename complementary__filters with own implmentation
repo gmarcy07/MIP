@@ -33,13 +33,13 @@ float hp;
 d_filter_t low_pass, high_pass;
 int print_data();
 //First order high and low pass DT Filter constants.	
-float a1h = -.991;
-float b1h = .9955;
-float b2h = -.9955;
+float a1h = -.9952;
+float b1h = .9976;
+float b2h = -.9976;
 
-float a1l = -.991;
-float b1l = .004488;
-float b2l = .004488;
+float a1l = -.9952;
+float b1l = .002394;
+float b2l = .002394;
 /*******************************************************************************
 * int print_data()
 * This function acts as the IMU interrupt function
@@ -77,8 +77,8 @@ int print_data(){
         		printf(" %5.2f ", lp);
                 printf(" %5.2f ", hp);
                 printf(" %5.2f ", lp+hp);
-                printf(" %5.5f ", U_low_k);
-                printf(" %5.5f \n", U_hi_k);
+                printf(" %5.2f ", U_low_k);
+                printf(" %5.2f \n", U_hi_k);
 
                 U_low_k1=U_low_k;
                 U_hi_k1 = U_hi_k;
