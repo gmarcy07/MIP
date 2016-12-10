@@ -8,30 +8,53 @@
 #include <roboticscape.h>
 
 // Global Variables
-float euler_gyro=0;
-float rad_angle;
+float euler_gyro = 0;
+float eu_gyro_k = 0;
+float eu_gyro_k1 = 0;
+
+float rad_angle = 0;
+float rangle_k = 0;
+float rangle_k1 = 0;
 float ang_deg;
+
+float U_low_k = 0;
+float U_low_k1 = 0;
+float U_hi_k = 0;
+float U_hi_k1 =0;
+
 #define sample_rate 100;
-float time_constant = 2;
+float time_constant = .1;
 int show_accel=0;
 int show_gyro=1;
-
 //struct to hold new data
 imu_data_t data;
 float lp;
 float hp;
 d_filter_t low_pass, high_pass;
 int print_data();
-
 //First order high and low pass DT Filter constants.	
-float a1h = -.991;
-float b1h = .9955;
-float b2h = -.9955;
+float a1h = -.9952;
+float b1h = .9976;
+float b2h = -.9976;
 
-f
+float a1l = -.9952;
+float b1l = .002394;
+float b2l = .002394;
+
+float k = .9;
+float b0 = -5.958;
+float b1 = 11;
+float b2 = -5;
+float a1 = -1.701;
+float a2 = .7003;
+float U_M = 0;
+float U_Mk1 = 0;
+float U_MK2 = 0;
+float theta = 0;
+float thetak1 = 0;
+float thetak2 = 0;
 /*******************************************************************************
 * int print_data()
-*
 * This function acts as the IMU interrupt function
 *******************************************************************************/
 int print_data(){
@@ -44,23 +67,57 @@ int print_data(){
                // printf(" %5.1f %5.1f %5.1f\n |",        data.gyro[0],
                //                                         data.gyro[1],
                // 										data.gyro[2]);
-        	
-
 			   euler_gyro += data.gyro[0]*DEG_TO_RAD/sample_rate;
+			   eu_gyro_k1=eu_gyro_k;
+			   eu_gyro_k=euler_gyro;
+
+			   U_hi_k = b1h*eu_gyro_k+b2h*eu_gyro_k1 -a1h*U_hi_k1;
+
 			   rad_angle=atan2(-data.accel[2], data.accel[1]);
+			   rangle_k1=rangle_k;
+			   rangle_k = rad_angle;
+			   U_low_k = b1l*rangle_k + b2l*rangle_k1 - a1l*U_low_k1;
+
                 ang_deg=rad_angle*180/PI;
                                                       
      		  lp=march_filter(&low_pass, rad_angle);
-     		hp=march_filter(&high_pass, euler_gyro);
+     		  hp=march_filter(&high_pass, euler_gyro);
 
      		    
-
-        		printf(" %5.2f ", euler_gyro);
+        		/*printf(" %5.2f ", euler_gyro);
         		printf(" %5.2f ", rad_angle);
         		printf(" %5.2f ", lp);
                 printf(" %5.2f ", hp);
-                printf("%5.2f \n", lp+hp);
+                printf(" %5.2f ", lp+hp);
+                printf(" %5.2f ", U_low_k);
+                printf(" %5.2f ", U_hi_k);*/
+	
+                U_low_k1=U_low_k;
+                U_hi_k1 = U_hi_k;
 
+               // if (theta<1 && theta > -1){
+                thetak2 = thetak1;
+     		    thetak1 = theta;
+     		    theta = U_low_k+U_hi_k + .4;
+     				
+
+                U_MK2 = U_Mk1;
+                U_Mk1 = U_M;
+                U_M = b0*k*theta + b1*k*thetak1 + b2*k*thetak2 - a1*U_Mk1 - a2*U_MK2;
+                U_Mk1 = U_M;
+                float phi;
+                int E_L;
+                int E_R;
+                float factor = 2.8645;
+                E_L = get_encoder_pos(3);
+                E_R = get_encoder_pos(2);
+                phi = (E_L+E_R)/2;
+                set_motor(2, U_M);
+                set_motor(3, -U_M);
+               // 	}
+                printf(" %5.2f ", theta);
+                printf(" %5.2f ", thetak1);
+                printf(" %5.2f \n", thetak2);
                 fflush(stdout);
         return 0;
 }
@@ -93,11 +150,13 @@ int main(){
  			
 
 		//print header
-		printf("Accelerometer |");
-		printf("Gyro |");
-		printf("lowpass |");
-		printf("highpass |");
-		printf("hi+lo |");
+		printf("Accel|");
+		printf("Gyro|");
+		printf("lowpass|");
+		printf("highpass|");
+		printf("hi+lo|");
+		printf("U_lo");
+		printf("U_hi");
 		printf("\n");
 
         imu_config_t conf = get_default_imu_config();
@@ -105,6 +164,7 @@ int main(){
                         
         // Initialize Cape
         initialize_cape();
+        enable_motors();
         // Initialize IMU for DMP Interrupt Function
         initialize_imu_dmp(&data, conf);
 
