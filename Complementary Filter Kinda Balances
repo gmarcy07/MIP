@@ -8,31 +8,21 @@
 #include <roboticscape.h>
 
 // Global Variables
-float euler_gyro = 0;
-float eu_gyro_k = 0;
-float eu_gyro_k1 = 0;
+float euler_gyro, eu_gyro_k, eu_gyro_k1 = 0;
+float rad_angle, rangle_k, rangle_k1 = 0;
 
-float rad_angle = 0;
-float rangle_k = 0;
-float rangle_k1 = 0;
-float ang_deg;
-
-float U_low_k = 0;
-float U_low_k1 = 0;
-float U_hi_k = 0;
-float U_hi_k1 =0;
+float U_low_k, U_low_k1 = 0;
+float U_hi_k, U_hi_k1 = 0;
 
 #define sample_rate 200;
 float time_constant = .1;
-int show_accel=0;
-int show_gyro=1;
-//struct to hold new data
+
 imu_data_t data;
-float lp;
-float hp;
-d_filter_t low_pass, high_pass;
+
+
 int print_data();
 int help_ive_fallen_and_i_cant_get_up();
+void* outerloop(void* ptr);
 //First order high and low pass DT Filter constants.	
 float a1h = -.9952;
 float b1h = .9976;
@@ -42,32 +32,30 @@ float a1l = -.9952;
 float b1l = .002394;
 float b2l = .002394;
 
+int E_L, E_R;
+
 float k = .8;
 float b0 = -25;
 float b1 = 45.09;
 float b2 = -20.2;
 float a1 = -1.435;
 float a2 = .435;
-float U_M = 0;
-float U_Mk1 = 0;
-float U_MK2 = 0;
-float theta = 0;
-float theta_ref = 0;
+float U_M, U_Mk1, U_MK2 = 0;
+float theta, theta_ref = 0;
 float P = 1;
-float thetak1, theta2k1 = 0;
-float thetak2 = 0;
+float thetak1, thetak2, theta2k1, thetak1 = 0;
 float D2_num [] = {.07512 -.0731};
 float D2_den [] = {1 -.98};
 
 
-float counter, counter1, inner_loop_counter = 0;
+float counter, counter1, inner_loop_counter, sat_counter, reset_counter = 0;
+float outerloop_count = 0;
 float saturation = 1;
-float sat_counter = 0;
 float k2 = 10;
 float K =.05;
-float phi_k;
-float phi_k1 = 0;
-float phi_ref = 0;
+float phi, phi_k, phi_k1, phi_ref = 0;
+//threads
+
 
 /*******************************************************************************
 * int print_data()
@@ -78,75 +66,53 @@ int print_data(){
         printf(" ");
         	inner_loop_counter += 1/sample_rate;
         	counter += 1/sample_rate;
-              //  printf(" %5.2f %5.2f %5.2f\n |",        data.accel[0],
-               //                                         data.accel[1],
-                 //                                       data.accel[2]);
-
-               // printf(" %5.1f %5.1f %5.1f\n |",        data.gyro[0],
-               //                                         data.gyro[1],
-               // 										data.gyro[2]);
+              
+              //Create High-Pass filter for Reading Angles
 			   euler_gyro += data.gyro[0]*DEG_TO_RAD/sample_rate;
 			   eu_gyro_k1=eu_gyro_k;
 			   eu_gyro_k=euler_gyro;
-
 			   U_hi_k = b1h*eu_gyro_k+b2h*eu_gyro_k1 -a1h*U_hi_k1;
 
+			   //Create Low Pass filter for reading angles
 			   rad_angle=atan2(-data.accel[2], data.accel[1]);
 			   rangle_k1=rangle_k;
 			   rangle_k = rad_angle;
 			   U_low_k = b1l*rangle_k + b2l*rangle_k1 - a1l*U_low_k1;
 
-                ang_deg=rad_angle*180/PI;
-
-                                                      
-     		  lp=march_filter(&low_pass, rad_angle);
-     		  hp=march_filter(&high_pass, euler_gyro);
-
-     		    
-        		/*printf(" %5.2f ", euler_gyro);
-        		printf(" %5.2f ", rad_angle);
-        		printf(" %5.2f ", lp);
-                printf(" %5.2f ", hp);
-                printf(" %5.2f ", lp+hp);
-                printf(" %5.2f ", U_low_k);
-                printf(" %5.2f ", U_hi_k);*/
-	
+			   //March the filters by setting the new values as the
+			   //new previous values
                 U_low_k1=U_low_k;
                 U_hi_k1 = U_hi_k;
 
                  
-                int E_L;
-                int E_R;
+                //Get the encoder positions of the left and right wheels
                 E_L = get_encoder_pos(3);
                 E_R = get_encoder_pos(2);
 
-               // thetak2 = thetak1;
-     		   // thetak1 = theta;
-     		    //theta = U_low_k+U_hi_k + .5+(phi_k);
 
-               //if(counter > .01){
-               /* 
-                phi_setpoint_k1 = phi_setpoint;
-                phi_c = (E_L+E_R)*PI/60;
-                phi_setpoint = (theta+D2_den[1]*thetak1 - k2* D2_num[1]*phi_setpoint_k1);*/
+                	//This is the outer loop thread
+                	//It runs on a different time scheme, only running
+                	//at 20 Hz
 
-                	if(inner_loop_counter >= 1/20){
-                	phi_k1=phi_k;
-                	phi_k= U_low_k+U_hi_k+.52 - (E_L+E_R)*PI/(60*35.57);
-                	phi_k = - phi_k;
-                	//phi_k = -(((lp+hp)+.5)+(-E_L+E_R)*(PI/(60*35.57)));
-                	theta_ref = K*(D2_num[0]*phi_k + D2_num[1]*phi_k1 - D2_den[1]*theta2k1);
-                	theta2k1 = theta_ref;
 
-                	inner_loop_counter = 0;
-               		}	
-                	//theta = (theta_ref - theta)*P;
-                
-            	//}
-               // if (theta<1 && theta > -1){
-                
+                	//if(inner_loop_counter >= 1/20){
+
+                	//Set the current phi as the previous, get the new value	
+                	//phi_k1=phi_k;
+                	//phi_k= U_low_k+U_hi_k+.52 - (E_L+E_R)*PI/(60*35.57);
+                	//Phi is a negative feedback so make it negative
+                	//phi_k = - phi_k;
+                	//Calculate the reference theta from the D2 difference equation
+                	//theta_ref = K*(D2_num[0]*phi_k + D2_num[1]*phi_k1 - D2_den[1]*theta2k1);
+                	//theta2k1 = theta_ref;
+
+                	//Reset the counter loop so it can begin counting again before
+                	//the next call to this outer loop thread
+                	//inner_loop_counter = 0;
+               		//}	
+                	
      		   
-     				
+    
                 thetak2 = thetak1;
      		    thetak1 = theta;
      		    theta = theta_ref - (U_low_k+U_hi_k + .52);
@@ -157,42 +123,9 @@ int print_data(){
                 
         		//Check for Motor Saturation- if they saturate for more than
         		// a second, something has gone wrong so disable them
-                if(fabs(U_M) >= 1){
-                		if(U_M >= 1){
-                		U_M = 1;
-                		}
-                			else if(U_M <= 1){
-                				U_M = -1;
-                			}
-                		
-                	sat_counter =sat_counter + .005;
-                		
-               	}
-               	else sat_counter = 0;
-                	
-                if(sat_counter > 2){
-                	disable_motors();
-                	printf("Motors Saturated for 2 Seconds");
-                	//set_state()=EXITING;
-               	}
-
-               	//Check for tipover
-               	if(fabs(U_hi_k+U_hi_k) > PI/3){
-               		printf("The Mip has fallen Over");
-               		disable_motors();
-               		//set_state()=EXITING;
-               	}
-
-                if((fabs(U_low_k+U_hi_k)-0.4) > 0.4 ){
-                counter1 += 1;
-                if(counter > 10){
-                        enable_motors();
-                       counter1 = 0;
-                       printf("Ready to go!");
-                }
-                else disable_motors();
-                printf("Help I've fallen and I can't get up");
-        }
+               
+                
+        
                 set_motor(2, -U_M);
                 set_motor(3, U_M);
                // 	}
@@ -212,9 +145,93 @@ int print_data(){
 }
 
 
+
+
 /*******************************************************************************
 * int tipover()
 *******************************************************************************/
+/*******************************************************************************
+* void d2_thread
+* This is the separate thread for D2
+*******************************************************************************/
+void* outerloop(void* ptr){
+	
+//Set the current phi as the previous, get the new value
+while(get_state()!=EXITING){	
+	outerloop_count += 1;
+		if(outerloop_count > 10){
+
+					//Get the encoder positions of the left and right wheels
+                	E_L = get_encoder_pos(3);
+               		E_R = get_encoder_pos(2);
+                	phi_k1=phi_k;
+                	phi_k= U_low_k+U_hi_k+.52 - (E_L+E_R)*PI/(60*35.57);
+                	//Phi is a negative feedback so make it negative
+                	phi_k = - phi_k;
+                	//Calculate the reference theta from the D2 difference equation
+                	theta_ref = K*(D2_num[0]*phi_k + D2_num[1]*phi_k1 - D2_den[1]*theta2k1);
+                	theta2k1 = theta_ref;
+
+                	//Reset the counter loop so it can begin counting again before
+                	//the next call to this outer loop thread
+                	inner_loop_counter = 0;
+               		}
+
+               		 if(fabs(U_M) >= 1){
+                		if(U_M >= 1){
+                		U_M = 1;
+                		}
+                			else if(U_M <= 1){
+                				U_M = -1;
+                			}
+                		
+                	sat_counter =sat_counter + .005;
+                	reset_counter = 0;
+                		
+               	}
+
+               	//Reset the saturation counter so it is not 
+               	//a running total sum of all the saturated points
+               	else {
+               		sat_counter = 0; reset_counter +=.005;
+                	}
+                //Disable motors if saturated for more than 2 
+                //seconds because something has gone wrong	
+                if(sat_counter > 2){
+                	disable_motors();
+                	printf("Motors Saturated for 2 Seconds");
+                }
+
+               	//Check for tipover
+               	if(fabs(U_hi_k+U_hi_k) > PI/2) {
+               		printf("The Mip has fallen Over");
+               		disable_motors();
+               		//set_state()=EXITING;
+               	}
+
+                if((fabs(U_low_k+U_hi_k)-0.52) > 0.5 ){
+                counter1 = 0;
+                phi_k = 0;
+                
+                		disable_motors();
+                		printf("The Mip has Fallen Over");
+                        }
+
+                
+                else {
+                	counter1 += 1;
+                }
+
+               //	if(counter1 > 100){
+                //	enable_motors();
+                //	printf("Ready To Go!");
+               
+
+
+               	}
+   return NULL;	
+
+}
 
 /*******************************************************************************
 * int main()
@@ -227,24 +244,8 @@ The print_data function is set with set_imu_interrupt
 
 
 int main(){
-        //int  sample_rate=10;
         // start with default config and modify based on options
-		
-		
-		//int counter = 0;
-
 	
-
-	
-        	
-	const float dt=1/(float)sample_rate;
-    low_pass = create_first_order_lowpass(dt, time_constant);
-	high_pass = create_first_order_highpass(dt, time_constant);
-
-				reset_filter(&low_pass);
-				reset_filter(&high_pass);	
- 			
-
 		//print header
 		printf("Phi|");
 		printf("Theta_Ref|");
@@ -262,11 +263,13 @@ int main(){
         enable_motors();
         // Initialize IMU for DMP Interrupt Function
         initialize_imu_dmp(&data, conf);
-
+		
         // call set_imu_interrupt_func to sample system values
         //and print the values
         //print_header();
         set_imu_interrupt_func(&print_data);
+        pthread_t outerloop_thread;
+		pthread_create(&outerloop_thread, NULL,outerloop, (void*) NULL);
 
 //sleep at end of loop
         while (get_state()!=EXITING) {
