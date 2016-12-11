@@ -51,18 +51,22 @@ float U_M = 0;
 float U_Mk1 = 0;
 float U_MK2 = 0;
 float theta = 0;
-float thetak1 = 0;
+float theta_ref = 0;
+float P = 1;
+float thetak1, theta2k1 = 0;
 float thetak2 = 0;
-float D2_num [] = {.08308 -.08287};
-float D2_den [] = {1 -.9734};
+float D2_num [] = {.3858 -.3853};
+float D2_den [] = {1 -.9277};
 
 
-float counter;
+float counter = 0;
+
 float k2 = 10;
-float phi_c;
-float phi_setpoint = 0;
-float phi_setpoint_k1 = 0;
-float phi_setpoint_k2 = 0;
+float K =.03;
+float phi_k;
+float phi_k1 = 0;
+float phi_ref = 0;
+
 /*******************************************************************************
 * int print_data()
 * This function acts as the IMU interrupt function
@@ -111,20 +115,35 @@ int print_data(){
                  
                 int E_L;
                 int E_R;
-                
-                if(counter > .01){
                 E_L = get_encoder_pos(3);
                 E_R = get_encoder_pos(2);
+
+               // thetak2 = thetak1;
+     		   // thetak1 = theta;
+     		    //theta = U_low_k+U_hi_k + .5+(phi_k);
+
+               //if(counter > .01){
+               /* 
                 phi_setpoint_k1 = phi_setpoint;
                 phi_c = (E_L+E_R)*PI/60;
-                phi_setpoint = (theta+D2_den[1]*thetak1 - k2* D2_num[1]*phi_setpoint_k1);
-            	}
+                phi_setpoint = (theta+D2_den[1]*thetak1 - k2* D2_num[1]*phi_setpoint_k1);*/
+
+                	phi_k1=phi_k;
+                	phi_k= lp+hp+.52 - (E_L+E_R)*PI/(60*35.57);
+                	phi_k = - phi_k;
+                	//phi_k = -(((lp+hp)+.5)+(-E_L+E_R)*(PI/(60*35.57)));
+                	theta_ref = K*(D2_num[0]*phi_k + D2_num[1]*phi_k1 - D2_den[1]*theta2k1);
+                	theta2k1 = theta_ref;
+                	//theta = (theta_ref - theta)*P;
+                
+            	//}
                // if (theta<1 && theta > -1){
+                
+     		   
+     				
                 thetak2 = thetak1;
      		    thetak1 = theta;
-     		    theta = U_low_k+U_hi_k + .5+(phi_setpoint-phi_c);
-     				
-
+     		    theta = theta_ref - (U_low_k+U_hi_k + .52);
                 U_MK2 = U_Mk1;
                 U_Mk1 = U_M;
                 U_M = b0*k*theta + b1*k*thetak1 + b2*k*thetak2 - a1*U_Mk1 - a2*U_MK2;
@@ -132,11 +151,13 @@ int print_data(){
                 
                 
                 
-                set_motor(2, U_M);
-                set_motor(3, -U_M);
+                set_motor(2, -U_M);
+                set_motor(3, U_M);
                // 	}
+                printf(" %5.2f ", phi_k);
+                printf("% 5.2f ", theta_ref);
                 printf(" %5.2f ", theta);
-                printf(" %5.2f ", thetak1);
+                printf(" %5.2f ", theta2k1);
                 printf(" %5.2f \n", thetak2);
 
                
@@ -175,13 +196,11 @@ int main(){
  			
 
 		//print header
-		printf("Accel|");
-		printf("Gyro|");
-		printf("lowpass|");
-		printf("highpass|");
-		printf("hi+lo|");
-		printf("U_lo");
-		printf("U_hi");
+		printf("Phi|");
+		printf("Theta_Ref|");
+		printf("Theta|");
+		printf("ThetaK1|");
+		printf("thetak2|");
 		printf("\n");
 
         imu_config_t conf = get_default_imu_config();
